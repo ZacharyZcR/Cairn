@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from cairn.dispatcher.protocol.client import ApiResult, CairnClient
-from cairn.dispatcher.runtime.process import ManagedProcess
+from cairn.dispatcher.runtime.process import ExecProcess
 
 LOG = logging.getLogger(__name__)
 HEARTBEAT_FAILURE_GRACE_MULTIPLIER = 2
@@ -31,7 +31,7 @@ class HeartbeatLease:
         self._scope = scope
         self._worker_name = worker_name
         self._interval = interval
-        self._process: ManagedProcess | None = None
+        self._process: ExecProcess | None = None
         self._failure: HeartbeatFailure | None = None
         self._last_success_at = time.monotonic()
         self._stop = threading.Event()
@@ -76,7 +76,7 @@ class HeartbeatLease:
         self._stop.set()
         self._thread.join(timeout=1)
 
-    def attach_process(self, process: ManagedProcess | None) -> None:
+    def attach_process(self, process: ExecProcess | None) -> None:
         with self._lock:
             self._process = process
 

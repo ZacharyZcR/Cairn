@@ -18,9 +18,8 @@ from cairn.dispatcher.tasks.common import (
     best_effort_release,
     cancel_reason,
     did_timeout,
-    preview,
     project_allows_conclude_fallback,
-    run_healthcheck,
+    preview,
     run_worker_process,
     task_healthcheck_enabled,
     write_conclude_result,
@@ -41,7 +40,7 @@ def run_bootstrap_task(
     worker: WorkerConfig,
     cancellation: TaskCancellation,
 ) -> str:
-    driver = get_driver(worker.type)
+    driver = get_driver(worker.type, config.runtime.execution)
     task_started = time.perf_counter()
     healthcheck_timeout = config.runtime.healthcheck_timeout
     lease = HeartbeatLease.for_intent(client, project.project.id, intent.id, worker.name, config.runtime.interval)
@@ -51,29 +50,20 @@ def run_bootstrap_task(
 
         if task_healthcheck_enabled(config):
             LOG.info(
-                "starting container exec project=%s intent=%s worker=%s phase=bootstrap_healthcheck timeout=%ss",
+                "checking worker health project=%s intent=%s worker=%s timeout=%ss",
                 project.project.id,
                 intent.id,
                 worker.name,
                 healthcheck_timeout,
             )
-            healthcheck = run_healthcheck(
-                container_manager,
-                container_name,
-                worker,
-                driver.build_healthcheck(worker),
-                timeout_seconds=healthcheck_timeout,
-                lease=lease,
-                cancellation=cancellation,
-            )
-            cancelled = cancel_reason(healthcheck.result, cancellation)
-            if cancelled is not None:
+            health = driver.check_health(worker, timeout=healthcheck_timeout)
+            if cancellation.is_cancelled:
                 LOG.info(
                     "bootstrap cancelled during healthcheck project=%s intent=%s worker=%s reason=%s",
                     project.project.id,
                     intent.id,
                     worker.name,
-                    cancelled,
+                    cancellation.reason,
                 )
                 best_effort_release(client, project.project.id, intent.id, worker.name)
                 return "cancelled"
@@ -87,14 +77,14 @@ def run_bootstrap_task(
                 )
                 best_effort_release(client, project.project.id, intent.id, worker.name)
                 return "failed"
-            if healthcheck.result.returncode != 0:
+            if not health.ok:
                 LOG.warning(
-                    "worker unhealthy project=%s intent=%s worker=%s healthcheck_ms=%s stderr=%s",
+                    "worker unhealthy project=%s intent=%s worker=%s status=%s detail=%s",
                     project.project.id,
                     intent.id,
                     worker.name,
-                    healthcheck.duration_ms,
-                    preview(healthcheck.result.stderr),
+                    health.status,
+                    health.detail,
                 )
                 best_effort_release(client, project.project.id, intent.id, worker.name)
                 return "unhealthy"
@@ -234,9 +224,7 @@ def run_bootstrap_task(
         best_effort_release(client, project.project.id, intent.id, worker.name)
         return "failed"
     except Exception:
-        LOG.exception(
-            "bootstrap task crashed project=%s intent=%s worker=%s", project.project.id, intent.id, worker.name
-        )
+        LOG.exception("bootstrap task crashed project=%s intent=%s worker=%s", project.project.id, intent.id, worker.name)
         best_effort_release(client, project.project.id, intent.id, worker.name)
         return "failed"
     finally:
@@ -303,12 +291,7 @@ def _try_conclude_fallback(
         _bootstrap_prompt_replacements(project),
     )
     conclude_argv = driver.build_conclude(worker, prompt, session)
-    LOG.info(
-        "starting bootstrap conclude fallback project=%s intent=%s worker=%s",
-        project.project.id,
-        intent.id,
-        worker.name,
-    )
+    LOG.info("starting bootstrap conclude fallback project=%s intent=%s worker=%s", project.project.id, intent.id, worker.name)
     conclude_started = time.perf_counter()
     result = run_worker_process(
         container_manager,
