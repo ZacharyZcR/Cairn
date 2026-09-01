@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import logging
-import time
 import uuid
 from dataclasses import dataclass
 
 from cairn.dispatcher.config import DispatchConfig, WorkerConfig
 from cairn.dispatcher.protocol.client import CairnClient
+from cairn.dispatcher.runtime.backend import ExecutionBackend
 from cairn.dispatcher.runtime.cancellation import TaskCancellation
-from cairn.dispatcher.runtime.containers import ContainerManager
 from cairn.dispatcher.runtime.heartbeat import HeartbeatLease
 from cairn.dispatcher.runtime.process import ProcessResult
 
@@ -54,7 +53,7 @@ def task_healthcheck_enabled(config: DispatchConfig) -> bool:
 
 
 def write_graph_snapshot_reference(
-    container_manager: ContainerManager,
+    container_manager: ExecutionBackend,
     container_name: str,
     graph_yaml: str,
     *,
@@ -71,7 +70,7 @@ def write_graph_snapshot_reference(
 
 
 def run_worker_process(
-    container_manager: ContainerManager,
+    container_manager: ExecutionBackend,
     container_name: str,
     worker: WorkerConfig,
     argv: list[str],

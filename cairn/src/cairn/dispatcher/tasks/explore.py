@@ -7,15 +7,15 @@ from cairn.dispatcher.config import DispatchConfig, WorkerConfig
 from cairn.dispatcher.contracts import parse_json_output, validate_explore_payload
 from cairn.dispatcher.prompting import load_prompt, render_prompt
 from cairn.dispatcher.protocol.client import CairnClient
+from cairn.dispatcher.runtime.backend import ExecutionBackend
 from cairn.dispatcher.runtime.cancellation import TaskCancellation
-from cairn.dispatcher.runtime.containers import ContainerManager
 from cairn.dispatcher.runtime.heartbeat import HeartbeatLease
 from cairn.dispatcher.tasks.common import (
     best_effort_release,
     cancel_reason,
     did_timeout,
-    project_allows_conclude_fallback,
     preview,
+    project_allows_conclude_fallback,
     run_worker_process,
     task_healthcheck_enabled,
     write_conclude_result,
@@ -30,7 +30,7 @@ LOG = logging.getLogger(__name__)
 def run_explore_task(
     config: DispatchConfig,
     client: CairnClient,
-    container_manager: ContainerManager,
+    container_manager: ExecutionBackend,
     project: ProjectDetail,
     export_yaml: str,
     intent: Intent,
@@ -241,7 +241,7 @@ def run_explore_task(
 def _try_conclude_fallback(
     config: DispatchConfig,
     client: CairnClient,
-    container_manager: ContainerManager,
+    container_manager: ExecutionBackend,
     container_name: str,
     worker: WorkerConfig,
     driver,
@@ -264,7 +264,12 @@ def _try_conclude_fallback(
         best_effort_release(client, project_id, intent.id, worker.name)
         return "failed"
     if lease.failure is not None:
-        LOG.warning("conclude fallback skipped because heartbeat already lost project=%s intent=%s worker=%s", project_id, intent.id, worker.name)
+        LOG.warning(
+            "conclude fallback skipped because heartbeat already lost project=%s intent=%s worker=%s",
+            project_id,
+            intent.id,
+            worker.name,
+        )
         best_effort_release(client, project_id, intent.id, worker.name)
         return "failed"
     if cancellation.is_cancelled:
@@ -385,7 +390,7 @@ def _try_conclude_fallback(
 
 
 def _run_process(
-    container_manager: ContainerManager,
+    container_manager: ExecutionBackend,
     container_name: str,
     worker: WorkerConfig,
     argv: list[str],

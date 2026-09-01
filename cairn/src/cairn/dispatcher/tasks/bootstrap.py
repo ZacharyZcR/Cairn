@@ -11,15 +11,15 @@ from cairn.dispatcher.contracts import (
 )
 from cairn.dispatcher.prompting import format_hints, load_prompt, render_prompt
 from cairn.dispatcher.protocol.client import CairnClient
+from cairn.dispatcher.runtime.backend import ExecutionBackend
 from cairn.dispatcher.runtime.cancellation import TaskCancellation
-from cairn.dispatcher.runtime.containers import ContainerManager
 from cairn.dispatcher.runtime.heartbeat import HeartbeatLease
 from cairn.dispatcher.tasks.common import (
     best_effort_release,
     cancel_reason,
     did_timeout,
-    project_allows_conclude_fallback,
     preview,
+    project_allows_conclude_fallback,
     run_worker_process,
     task_healthcheck_enabled,
     write_conclude_result,
@@ -34,7 +34,7 @@ LOG = logging.getLogger(__name__)
 def run_bootstrap_task(
     config: DispatchConfig,
     client: CairnClient,
-    container_manager: ContainerManager,
+    container_manager: ExecutionBackend,
     project: ProjectDetail,
     intent: Intent,
     worker: WorkerConfig,
@@ -224,7 +224,9 @@ def run_bootstrap_task(
         best_effort_release(client, project.project.id, intent.id, worker.name)
         return "failed"
     except Exception:
-        LOG.exception("bootstrap task crashed project=%s intent=%s worker=%s", project.project.id, intent.id, worker.name)
+        LOG.exception(
+            "bootstrap task crashed project=%s intent=%s worker=%s", project.project.id, intent.id, worker.name
+        )
         best_effort_release(client, project.project.id, intent.id, worker.name)
         return "failed"
     finally:
@@ -234,7 +236,7 @@ def run_bootstrap_task(
 def _try_conclude_fallback(
     config: DispatchConfig,
     client: CairnClient,
-    container_manager: ContainerManager,
+    container_manager: ExecutionBackend,
     container_name: str,
     worker: WorkerConfig,
     driver,
@@ -291,7 +293,12 @@ def _try_conclude_fallback(
         _bootstrap_prompt_replacements(project),
     )
     conclude_argv = driver.build_conclude(worker, prompt, session)
-    LOG.info("starting bootstrap conclude fallback project=%s intent=%s worker=%s", project.project.id, intent.id, worker.name)
+    LOG.info(
+        "starting bootstrap conclude fallback project=%s intent=%s worker=%s",
+        project.project.id,
+        intent.id,
+        worker.name,
+    )
     conclude_started = time.perf_counter()
     result = run_worker_process(
         container_manager,

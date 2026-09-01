@@ -12,8 +12,8 @@ from cairn.dispatcher.prompting import (
     render_prompt,
 )
 from cairn.dispatcher.protocol.client import CairnClient
+from cairn.dispatcher.runtime.backend import ExecutionBackend
 from cairn.dispatcher.runtime.cancellation import TaskCancellation
-from cairn.dispatcher.runtime.containers import ContainerManager
 from cairn.dispatcher.runtime.heartbeat import HeartbeatLease
 from cairn.dispatcher.tasks.common import (
     best_effort_release_reason,
@@ -33,7 +33,7 @@ LOG = logging.getLogger(__name__)
 def run_reason_task(
     config: DispatchConfig,
     client: CairnClient,
-    container_manager: ContainerManager,
+    container_manager: ExecutionBackend,
     project: ProjectDetail,
     export_yaml: str,
     worker: WorkerConfig,

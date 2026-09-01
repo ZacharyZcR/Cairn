@@ -18,10 +18,10 @@ from cairn.dispatcher.runtime.containers import ContainerManager
 from cairn.dispatcher.runtime.local_backend import LocalBackend
 from cairn.dispatcher.runtime.startup_healthcheck import format_failure_summary, run_startup_healthchecks
 from cairn.dispatcher.scheduler.worker_select import choose_worker
-from cairn.dispatcher.workers.registry import get_driver
 from cairn.dispatcher.tasks.bootstrap import run_bootstrap_task
 from cairn.dispatcher.tasks.explore import run_explore_task
 from cairn.dispatcher.tasks.reason import run_reason_task
+from cairn.dispatcher.workers.registry import get_driver
 from cairn.server.models import Intent, ProjectDetail, ProjectSummary
 
 LOG = logging.getLogger(__name__)
@@ -476,10 +476,17 @@ class DispatcherLoop:
                 cancellation := TaskCancellation(),
             )
         except Exception:
-            LOG.exception("failed to submit bootstrap task project=%s intent=%s worker=%s", project.project.id, intent.id, worker.name)
+            LOG.exception(
+                "failed to submit bootstrap task project=%s intent=%s worker=%s",
+                project.project.id,
+                intent.id,
+                worker.name,
+            )
             self._best_effort_release(project.project.id, intent.id, worker.name)
             return False
-        self.futures[future] = RunningTask(project.project.id, "bootstrap", worker.name, cancellation, intent_id=intent.id)
+        self.futures[future] = RunningTask(
+            project.project.id, "bootstrap", worker.name, cancellation, intent_id=intent.id
+        )
         self.runtime_project_ids.add(project.project.id)
         self._clear_project_log_state(project.project.id)
         LOG.info("dispatched bootstrap project=%s intent=%s worker=%s", project.project.id, intent.id, worker.name)
@@ -535,10 +542,17 @@ class DispatcherLoop:
                 cancellation := TaskCancellation(),
             )
         except Exception:
-            LOG.exception("failed to submit explore task project=%s intent=%s worker=%s", project.project.id, intent.id, worker.name)
+            LOG.exception(
+                "failed to submit explore task project=%s intent=%s worker=%s",
+                project.project.id,
+                intent.id,
+                worker.name,
+            )
             self._best_effort_release(project.project.id, intent.id, worker.name)
             return False
-        self.futures[future] = RunningTask(project.project.id, "explore", worker.name, cancellation, intent_id=intent.id)
+        self.futures[future] = RunningTask(
+            project.project.id, "explore", worker.name, cancellation, intent_id=intent.id
+        )
         self.runtime_project_ids.add(project.project.id)
         self._clear_project_log_state(project.project.id)
         LOG.info("dispatched explore project=%s intent=%s worker=%s", project.project.id, intent.id, worker.name)
@@ -591,7 +605,10 @@ class DispatcherLoop:
             "worker selection project=%s task=%s candidates=%s blocked_busy=%s blocked_unhealthy=%s blocked_rejected=%s blocked_task_type=%s chosen=%s",
             project_id,
             task_type,
-            [f"{worker.name}({running_counts.get(worker.name, 0)}/{worker.max_running},p{worker.priority})" for worker in candidates],
+            [
+                f"{worker.name}({running_counts.get(worker.name, 0)}/{worker.max_running},p{worker.priority})"
+                for worker in candidates
+            ],
             blocked_busy,
             blocked_unhealthy,
             blocked_rejected,
@@ -657,7 +674,11 @@ class DispatcherLoop:
         if not intents:
             return None
         if len(intents) > 1:
-            LOG.warning("project has multiple bootstrap intents project=%s intents=%s", project.project.id, [intent.id for intent in intents])
+            LOG.warning(
+                "project has multiple bootstrap intents project=%s intents=%s",
+                project.project.id,
+                [intent.id for intent in intents],
+            )
         intents.sort(key=lambda intent: (intent.worker is not None, intent.created_at, intent.id))
         return intents[0]
 
@@ -779,7 +800,9 @@ class DispatcherLoop:
                         task.open_intent_count,
                     )
             except Exception:
-                LOG.exception("task crashed project=%s task=%s worker=%s", task.project_id, task.task_type, task.worker_name)
+                LOG.exception(
+                    "task crashed project=%s task=%s worker=%s", task.project_id, task.task_type, task.worker_name
+                )
 
     def _cleanup_completed_containers(self, summaries: list[ProjectSummary]) -> None:
         for summary in summaries:
@@ -880,12 +903,20 @@ class DispatcherLoop:
     def _best_effort_release(self, project_id: str, intent_id: str, worker_name: str) -> None:
         response = self.client.release(project_id, intent_id, worker_name)
         if not response.ok and response.status_code not in (403, 409):
-            LOG.warning("release failed project=%s intent=%s worker=%s status=%s", project_id, intent_id, worker_name, response.status_code)
+            LOG.warning(
+                "release failed project=%s intent=%s worker=%s status=%s",
+                project_id,
+                intent_id,
+                worker_name,
+                response.status_code,
+            )
 
     def _best_effort_release_reason(self, project_id: str, worker_name: str) -> None:
         response = self.client.release_reason(project_id, worker_name)
         if not response.ok and response.status_code not in (403, 409):
-            LOG.warning("reason release failed project=%s worker=%s status=%s", project_id, worker_name, response.status_code)
+            LOG.warning(
+                "reason release failed project=%s worker=%s status=%s", project_id, worker_name, response.status_code
+            )
 
     def _log_changed(self, scope: str, level: int, message: str, *args: object) -> None:
         state = (level, message, args)
@@ -908,9 +939,7 @@ class DispatcherLoop:
         interval = self.config.runtime.interval
         for name, value in (("intent_timeout", settings.intent_timeout), ("reason_timeout", settings.reason_timeout)):
             if value <= interval:
-                raise RuntimeError(
-                    f"server {name}={value}s must be greater than dispatcher interval={interval}s"
-                )
+                raise RuntimeError(f"server {name}={value}s must be greater than dispatcher interval={interval}s")
             if value < interval * 2:
                 LOG.warning(
                     "server %s is tight %s=%ss interval=%ss; heartbeat slack is only %ss",

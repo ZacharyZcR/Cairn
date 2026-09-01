@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import dataclass
 import logging
 import threading
 import time
+from contextlib import suppress
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from docker.errors import APIError, DockerException
@@ -186,7 +186,9 @@ class ManagedProcess:
             if exit_code in (None, 0, 1):
                 return
         if last_error is not None:
-            LOG.warning("failed to kill container exec pid=%s container=%s error=%s", pid, self._container.name, last_error)
+            LOG.warning(
+                "failed to kill container exec pid=%s container=%s error=%s", pid, self._container.name, last_error
+            )
 
     @staticmethod
     def _split_chunk(chunk: Any) -> tuple[str, str]:

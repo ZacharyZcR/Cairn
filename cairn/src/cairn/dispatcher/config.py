@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
 import json
+from decimal import Decimal, InvalidOperation
 from importlib import resources
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-
 
 TaskType = Literal["reason", "explore", "bootstrap"]
 WorkerType = Literal["claudecode", "codex", "pi", "mock"]
@@ -124,9 +123,7 @@ MOCK_DEFAULT_BEHAVIOR: dict[str, dict[str, Any]] = {
     },
 }
 
-MOCK_ALLOWED_ENV_KEYS = frozenset(
-    {f"MOCK_{phase.upper()}" for phase in MOCK_ALLOWED_OUTCOMES}
-)
+MOCK_ALLOWED_ENV_KEYS = frozenset({f"MOCK_{phase.upper()}" for phase in MOCK_ALLOWED_OUTCOMES})
 
 
 class ReasonTaskConfig(BaseModel):
@@ -193,7 +190,7 @@ class WorkerConfig(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_env(self) -> "WorkerConfig":
+    def validate_env(self) -> WorkerConfig:
         # Required LLM env keys (base_url / key / model) are enforced per execution mode by
         # DispatchConfig: container mode needs them, local mode reuses the host CLI config.
         # The checks below are mode-independent and always apply.
@@ -247,7 +244,7 @@ class DispatchConfig(BaseModel):
         return merged
 
     @model_validator(mode="after")
-    def validate_workers(self) -> "DispatchConfig":
+    def validate_workers(self) -> DispatchConfig:
         names = [worker.name for worker in self.workers]
         if len(set(names)) != len(names):
             raise ValueError("worker names must be unique")
@@ -258,7 +255,7 @@ class DispatchConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_execution_mode(self) -> "DispatchConfig":
+    def validate_execution_mode(self) -> DispatchConfig:
         if self.runtime.execution == "container":
             if self.container is None:
                 raise ValueError("container config is required when runtime.execution is container")
@@ -273,7 +270,7 @@ class DispatchConfig(BaseModel):
         return self
 
     @classmethod
-    def load(cls, path: Path) -> "DispatchConfig":
+    def load(cls, path: Path) -> DispatchConfig:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         config = cls.model_validate(data)
         validate_prompt_resources(config.runtime.prompt_group)
@@ -325,7 +322,9 @@ def resolve_mock_behavior(worker_name: str, env: dict[str, str]) -> dict[str, di
             raise ValueError(f"worker {worker_name} {prefix}.outcomes must be an object")
         unknown_outcomes = sorted(set(raw_outcomes) - allowed_outcomes)
         if unknown_outcomes:
-            raise ValueError(f"worker {worker_name} {prefix}.outcomes has unsupported keys: {', '.join(unknown_outcomes)}")
+            raise ValueError(
+                f"worker {worker_name} {prefix}.outcomes has unsupported keys: {', '.join(unknown_outcomes)}"
+            )
         outcomes: dict[str, float] = {}
         total = Decimal("0")
         for outcome in sorted(allowed_outcomes):
@@ -360,17 +359,23 @@ def resolve_mock_behavior(worker_name: str, env: dict[str, str]) -> dict[str, di
                 if "fact_ids_gte" in rule:
                     value = rule["fact_ids_gte"]
                     if not isinstance(value, int) or value < 0:
-                        raise ValueError(f"worker {worker_name} {prefix}.rules[{index}].fact_ids_gte must be a non-negative integer")
+                        raise ValueError(
+                            f"worker {worker_name} {prefix}.rules[{index}].fact_ids_gte must be a non-negative integer"
+                        )
                     entry["fact_ids_gte"] = value
                 if "fact_ids_lte" in rule:
                     value = rule["fact_ids_lte"]
                     if not isinstance(value, int) or value < 0:
-                        raise ValueError(f"worker {worker_name} {prefix}.rules[{index}].fact_ids_lte must be a non-negative integer")
+                        raise ValueError(
+                            f"worker {worker_name} {prefix}.rules[{index}].fact_ids_lte must be a non-negative integer"
+                        )
                     entry["fact_ids_lte"] = value
                 if "open_intents_empty" in rule:
                     value = rule["open_intents_empty"]
                     if not isinstance(value, bool):
-                        raise ValueError(f"worker {worker_name} {prefix}.rules[{index}].open_intents_empty must be boolean")
+                        raise ValueError(
+                            f"worker {worker_name} {prefix}.rules[{index}].open_intents_empty must be boolean"
+                        )
                     entry["open_intents_empty"] = value
                 normalized_rules.append(entry)
             behavior[phase]["rules"] = normalized_rules
@@ -381,7 +386,9 @@ def _mock_env_prefix(phase: str) -> str:
     return f"MOCK_{phase.upper()}"
 
 
-def _parse_mock_phase_payload(worker_name: str, env: dict[str, str], key: str, default: dict[str, Any]) -> dict[str, Any]:
+def _parse_mock_phase_payload(
+    worker_name: str, env: dict[str, str], key: str, default: dict[str, Any]
+) -> dict[str, Any]:
     raw = env.get(key)
     if raw is None:
         return json.loads(json.dumps(default))
