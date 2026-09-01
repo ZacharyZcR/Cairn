@@ -1,12 +1,14 @@
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
 from datetime import datetime
-import yaml
 
+import yaml
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
+
+from cairn.server.auth import require_auth
 from cairn.server.db import get_conn
 from cairn.server.services import expire_reason_leases, expire_workers, get_project_or_404
 
-router = APIRouter(tags=["export"])
+router = APIRouter(tags=["export"], dependencies=[Depends(require_auth)])
 
 
 def format_export_timestamp(value: str | None) -> str | None:
@@ -24,9 +26,7 @@ def _load_project_data(conn, project_id: str):
     expire_reason_leases(conn, project_id)
     proj = get_project_or_404(conn, project_id)
 
-    facts = conn.execute(
-        "SELECT id, description FROM facts WHERE project_id = ?", (project_id,)
-    ).fetchall()
+    facts = conn.execute("SELECT id, description FROM facts WHERE project_id = ?", (project_id,)).fetchall()
     hints = conn.execute(
         "SELECT content, creator, created_at FROM hints WHERE project_id = ? ORDER BY created_at",
         (project_id,),

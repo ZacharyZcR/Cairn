@@ -1,26 +1,27 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from cairn.server.auth import require_auth
 from cairn.server.db import get_conn
 from cairn.server.models import (
     CompleteRequest,
     CreateProjectRequest,
     Fact,
-    Hint,
     HeartbeatRequest,
+    Hint,
     Intent,
     ProjectDetail,
     ProjectMeta,
     ProjectSummary,
+    ReasonClaimRequest,
     ReopenRequest,
     ReopenResponse,
-    ReasonClaimRequest,
-    UpdateProjectTitleRequest,
     UpdateProjectStatusRequest,
+    UpdateProjectTitleRequest,
 )
 from cairn.server.services import (
     build_intents,
-    check_project_completed,
     check_project_active,
+    check_project_completed,
     clear_project_reason,
     expire_reason_leases,
     expire_workers,
@@ -38,7 +39,7 @@ from cairn.server.services import (
     validate_goal_not_in_sources,
 )
 
-router = APIRouter(tags=["projects"])
+router = APIRouter(tags=["projects"], dependencies=[Depends(require_auth)])
 
 
 @router.get("/projects", response_model=list[ProjectSummary])
@@ -128,9 +129,7 @@ def get_project(project_id: str):
         expire_reason_leases(conn, project_id)
         row = get_project_or_404(conn, project_id)
 
-        facts = conn.execute(
-            "SELECT * FROM facts WHERE project_id = ?", (project_id,)
-        ).fetchall()
+        facts = conn.execute("SELECT * FROM facts WHERE project_id = ?", (project_id,)).fetchall()
         hints = conn.execute(
             "SELECT * FROM hints WHERE project_id = ? ORDER BY created_at",
             (project_id,),

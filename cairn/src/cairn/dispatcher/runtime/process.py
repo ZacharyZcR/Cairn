@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import dataclass
 import logging
 import threading
 import time
-from typing import Any
+from contextlib import suppress
+from dataclasses import dataclass
+from typing import Any, Protocol, runtime_checkable
 
 from docker.errors import APIError, DockerException
 from docker.models.containers import Container
@@ -24,12 +24,29 @@ class ProcessResult:
     cancel_reason: str | None = None
 
 
+@runtime_checkable
+class ExecProcess(Protocol):
+    """A worker process, regardless of whether it runs inside a container or on the host.
+
+    Container mode uses ManagedProcess; local mode uses LocalProcess. Both expose this
+    surface so the task runners, heartbeat lease and cancellation stay backend-agnostic.
+    """
+
+    def start(self) -> None: ...
+
+    def communicate(self, timeout: float | None) -> ProcessResult: ...
+
+    def kill(self) -> None: ...
+
+    def cancel(self, reason: str) -> None: ...
+
+
 class ManagedProcess:
     def __init__(self, container: Container, command: list[str], env: dict[str, str]):
         self.command = command
         self.env = env
         self._container = container
-        self._api = container.client.api
+        self._api = container.client.api  # type: ignore[union-attr]
         self._exec_id: str | None = None
         self._reader: threading.Thread | None = None
         self._stdout: list[str] = []
@@ -169,7 +186,9 @@ class ManagedProcess:
             if exit_code in (None, 0, 1):
                 return
         if last_error is not None:
-            LOG.warning("failed to kill container exec pid=%s container=%s error=%s", pid, self._container.name, last_error)
+            LOG.warning(
+                "failed to kill container exec pid=%s container=%s error=%s", pid, self._container.name, last_error
+            )
 
     @staticmethod
     def _split_chunk(chunk: Any) -> tuple[str, str]:

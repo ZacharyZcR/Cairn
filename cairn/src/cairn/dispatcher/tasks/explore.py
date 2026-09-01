@@ -7,16 +7,15 @@ from cairn.dispatcher.config import DispatchConfig, WorkerConfig
 from cairn.dispatcher.contracts import parse_json_output, validate_explore_payload
 from cairn.dispatcher.prompting import load_prompt, render_prompt
 from cairn.dispatcher.protocol.client import CairnClient
+from cairn.dispatcher.runtime.backend import ExecutionBackend
 from cairn.dispatcher.runtime.cancellation import TaskCancellation
-from cairn.dispatcher.runtime.containers import ContainerManager
 from cairn.dispatcher.runtime.heartbeat import HeartbeatLease
 from cairn.dispatcher.tasks.common import (
     best_effort_release,
     cancel_reason,
     did_timeout,
-    project_allows_conclude_fallback,
     preview,
-    run_healthcheck,
+    project_allows_conclude_fallback,
     run_worker_process,
     task_healthcheck_enabled,
     write_conclude_result,
@@ -31,14 +30,14 @@ LOG = logging.getLogger(__name__)
 def run_explore_task(
     config: DispatchConfig,
     client: CairnClient,
-    container_manager: ContainerManager,
+    container_manager: ExecutionBackend,
     project: ProjectDetail,
     export_yaml: str,
     intent: Intent,
     worker: WorkerConfig,
     cancellation: TaskCancellation,
 ) -> str:
-    driver = get_driver(worker.type)
+    driver = get_driver(worker.type, config.runtime.execution)
     task_started = time.perf_counter()
     healthcheck_timeout = config.runtime.healthcheck_timeout
     lease = HeartbeatLease.for_intent(client, project.project.id, intent.id, worker.name, config.runtime.interval)
@@ -48,29 +47,20 @@ def run_explore_task(
 
         if task_healthcheck_enabled(config):
             LOG.info(
-                "starting container exec project=%s intent=%s worker=%s phase=explore_healthcheck timeout=%ss",
+                "checking worker health project=%s intent=%s worker=%s timeout=%ss",
                 project.project.id,
                 intent.id,
                 worker.name,
                 healthcheck_timeout,
             )
-            healthcheck = run_healthcheck(
-                container_manager,
-                container_name,
-                worker,
-                driver.build_healthcheck(worker),
-                timeout_seconds=healthcheck_timeout,
-                lease=lease,
-                cancellation=cancellation,
-            )
-            cancelled = cancel_reason(healthcheck.result, cancellation)
-            if cancelled is not None:
+            health = driver.check_health(worker, timeout=healthcheck_timeout)
+            if cancellation.is_cancelled:
                 LOG.info(
                     "explore cancelled during healthcheck project=%s intent=%s worker=%s reason=%s",
                     project.project.id,
                     intent.id,
                     worker.name,
-                    cancelled,
+                    cancellation.reason,
                 )
                 best_effort_release(client, project.project.id, intent.id, worker.name)
                 return "cancelled"
@@ -84,14 +74,14 @@ def run_explore_task(
                 )
                 best_effort_release(client, project.project.id, intent.id, worker.name)
                 return "failed"
-            if healthcheck.result.returncode != 0:
+            if not health.ok:
                 LOG.warning(
-                    "worker unhealthy project=%s intent=%s worker=%s healthcheck_ms=%s stderr=%s",
+                    "worker unhealthy project=%s intent=%s worker=%s status=%s detail=%s",
                     project.project.id,
                     intent.id,
                     worker.name,
-                    healthcheck.duration_ms,
-                    preview(healthcheck.result.stderr),
+                    health.status,
+                    health.detail,
                 )
                 best_effort_release(client, project.project.id, intent.id, worker.name)
                 return "unhealthy"
@@ -197,7 +187,7 @@ def run_explore_task(
                 project.project.id,
                 intent.id,
                 worker.name,
-                description,
+                description or "",
                 source="explore_execute",
                 phase_ms=execute_ms,
                 total_ms=int((time.perf_counter() - task_started) * 1000),
@@ -251,7 +241,7 @@ def run_explore_task(
 def _try_conclude_fallback(
     config: DispatchConfig,
     client: CairnClient,
-    container_manager: ContainerManager,
+    container_manager: ExecutionBackend,
     container_name: str,
     worker: WorkerConfig,
     driver,
@@ -274,7 +264,12 @@ def _try_conclude_fallback(
         best_effort_release(client, project_id, intent.id, worker.name)
         return "failed"
     if lease.failure is not None:
-        LOG.warning("conclude fallback skipped because heartbeat already lost project=%s intent=%s worker=%s", project_id, intent.id, worker.name)
+        LOG.warning(
+            "conclude fallback skipped because heartbeat already lost project=%s intent=%s worker=%s",
+            project_id,
+            intent.id,
+            worker.name,
+        )
         best_effort_release(client, project_id, intent.id, worker.name)
         return "failed"
     if cancellation.is_cancelled:
@@ -388,14 +383,14 @@ def _try_conclude_fallback(
         project_id,
         intent.id,
         worker.name,
-        description,
+        description or "",
         source="explore_conclude",
         phase_ms=conclude_ms,
     )
 
 
 def _run_process(
-    container_manager: ContainerManager,
+    container_manager: ExecutionBackend,
     container_name: str,
     worker: WorkerConfig,
     argv: list[str],
